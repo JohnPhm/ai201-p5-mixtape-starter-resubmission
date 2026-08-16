@@ -87,3 +87,22 @@ The recipient reads it later via `GET /users/<id>/notifications` → `get_notifi
 - **Time is UTC-aware on write but comes back naive from SQLite,** so any timestamp comparison has to re-attach the timezone first. `update_listening_streak()` does this explicitly.
 - **Streak state is denormalized** — the event log and the counter can drift, since nothing recomputes one from the other.
 
+### Reproducing Errors
+1. Listening streak keeps resetting
+- To trigger the bug, we can use the pytest file test_streaks.py. The command "pytest tests/test_streaks.py::test_streak_increments_on_sunday" will use the streak incrementing on Sunday. This test results in an AssertionError, suggesting that it failed and that it is not incrementing correctly. 
+
+Bug Fix for Issue #1:
+The faulty logic was in update_listening_streak() in services/streak_service.py. The branch that increments the streak on a consecutive day had an extra condition tacked on:
+    elif days_since_last == 1 and today.weekday() != 6:
+        user.listening_streak += 1
+
+In Python, datetime.weekday() returns 6 for Sunday. So whenever "today" was a Sunday, the increment branch was skipped even though the user had listened the day before (Saturday). Control then fell through to the else branch, which resets the streak to 1. That is exactly why Kenji's streak was wiped every Sunday morning and then started counting again from Monday. This extra weekday check has no basis in the streak rules — a consecutive day is a consecutive day regardless of which day of the week it is.
+
+The fix was to remove the "and today.weekday() != 6" clause so the branch simply increments whenever exactly one day has passed.
+
+2. Friends Listening Now shows people from yesterday
+- To trigger this bug, 
+
+3. The same song keeps showing up twice in search
+
+
