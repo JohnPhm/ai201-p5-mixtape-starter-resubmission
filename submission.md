@@ -89,7 +89,9 @@ The recipient reads it later via `GET /users/<id>/notifications` → `get_notifi
 
 ### Reproducing Errors
 1. Listening streak keeps resetting
-- To trigger the bug, we can use the pytest file test_streaks.py. The command "pytest tests/test_streaks.py::test_streak_increments_on_sunday" will use the streak incrementing on Sunday. This test results in an AssertionError, suggesting that it failed and that it is not incrementing correctly. 
+To trigger the bug, we can use the pytest file test_streaks.py. The command "pytest tests/test_streaks.py::test_streak_increments_on_sunday" will use the streak incrementing on Sunday. This test results in an AssertionError, suggesting that it failed and that it is not incrementing correctly. 
+
+Looking at the error, the AssertionError pointed at tests/test_streaks.py:96, so I opened that test and saw it imports update_listening_streak from services/streak_service.py and calls it directly. This tells me that the failure is found within the service, not the route. I opened streak_service.py and read update_listening_streak() top to bottom against its own docstring, which lists four rules: no prior history, same day, consecutive day, gap. The docstring's third rule says "if the user listened yesterday: streak increments by 1", but the code's matching branch had a second condition that the docstring never mentions. 
 
 Bug Fix for Issue #1:
 The faulty logic was in update_listening_streak() in services/streak_service.py. The branch that increments the streak on a consecutive day had an extra condition tacked on:
@@ -100,8 +102,23 @@ In Python, datetime.weekday() returns 6 for Sunday. So whenever "today" was a Su
 
 The fix was to remove the "and today.weekday() != 6" clause so the branch simply increments whenever exactly one day has passed.
 
+Side-effect check: all 5 tests in test_streaks.py pass, including the four that were already passing: new user starts at 1, consecutive days increment, same-day listens don't double count, and a skipped day still resets to 1. TThe last one matters the most, since it proves removing the condition didn't break the reset path; the clause I deleted only guarded the increment branch, so gap handling was never affected. I also confirmed get_streak() and GET /users/<id>/streak were untouched.
+
+
+
 2. Friends Listening Now shows people from yesterday
 - To trigger this bug, 
+
+"Friends Listening Now" is supposed to show me what my friends are playing right now — or at least what they've played today. This morning around 9am it showed darius "listening now" to a song he told me he played at 11pm last night, before he went to bed. He hadn't opened the app all morning. Stuff from yesterday evening keeps hanging around in the feed until the same time the next day.
+
+Steps I took:
+- Opened my feed in the morning (GET /feed/<my_id>/listening-now).
+- Cross-checked with darius: his last listen was the previous night.
+
+Expected: only friends who have listened today appear. Actual: friends whose last listen was yesterday evening still show up the next morning.
+
+Bug fix for issue #2:
+The faulty line was in the cutoff mentioned in get_friends_listening_now(). I changed the cutoff to mean the start of today instead of 24 hours ago. This means that anything played today will be included. 
 
 3. The same song keeps showing up twice in search
 
