@@ -107,18 +107,18 @@ Side-effect check: all 5 tests in test_streaks.py pass, including the four that 
 
 
 2. Friends Listening Now shows people from yesterday
-- To trigger this bug, 
-
 "Friends Listening Now" is supposed to show me what my friends are playing right now — or at least what they've played today. This morning around 9am it showed darius "listening now" to a song he told me he played at 11pm last night, before he went to bed. He hadn't opened the app all morning. Stuff from yesterday evening keeps hanging around in the feed until the same time the next day.
 
-Steps I took:
-- Opened my feed in the morning (GET /feed/<my_id>/listening-now).
-- Cross-checked with darius: his last listen was the previous night.
+Steps I took to find the root cause of the bug:
+I started at the route, since the issue report names the endpoint. GET /feed/<user_id>/listening-now is handled in routes/feed.py, which is simply a file that calls get_friends_listening_now(user_id), catches ValueErrors, and turns the results into JSON. I then decided to look at services/feed_service.py instead. get_friends_listening_now() does four things: load the user, compute a cutoff, query events filtered by listened_at >= cutoff, and dedupe to one entry per friend. I ruled out the last three. The dedupe keeps each friend's newest event because the query is ordered desc(listened_at), so it can't resurrect an older listen. This meant that the cutoff was the only thing left deciding whether a stale event shows up. 
 
 Expected: only friends who have listened today appear. Actual: friends whose last listen was yesterday evening still show up the next morning.
 
 Bug fix for issue #2:
-The faulty line was in the cutoff mentioned in get_friends_listening_now(). I changed the cutoff to mean the start of today instead of 24 hours ago. This means that anything played today will be included. 
+The faulty line was in the cutoff mentioned in get_friends_listening_now(). RECENT_THRESHOLD was timedelta(hours=24), and the cutoff was computed as datetime.now(timezone.utc) - RECENT_THRESHOLD. That's a rolling 24-hour window, not a calendar day. The feed was answering "who listened in the last 24 hours" when the feature is called "Listening Now." Nothing about the query, the ordering, or the per-friend dedup was wrong — a single constant encoded the wrong notion of recency.
+
+Side-effect check: 
+I replaced the rolling cutoff with the start of the current UTC day, so the filter now means "listened today" instead of "listened in the last 24 hours." get_activity_feed() remains unaffected since it never used the cutoff. The rest of the function is untouched as the query still orders newest-first and the dedupe still keeps one entry per friend, so the feed's shape and ordernig are unchanged. 
 
 3. The same song keeps showing up twice in search
 
