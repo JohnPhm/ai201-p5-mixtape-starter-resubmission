@@ -1,5 +1,12 @@
 # Project 5: Mixtape Bug Hunt — Submission
 
+![alt text](image.png)
+
+AI Usage: 
+In this project, I had Claude assist me with numerous things. The first thing I had Claude help me with was verifying my understanding of the application. I first traced through the application in an attempt to understand how the app works. I then asked Claude if my understanding of the application aligns with the interpretation that it derived from reading through the code. 
+Another area that I used AI in this project would be fixing the issues itself. I was able to successfully trace and pinpoint where the issues arose from and I asked Claude to supply me with several solutions and explanations to how each solution works. For example, I was able to identify the problematic area within one of the lines. It was an extra condition that changed the behavior. Using Claude, I was able to understand that I needed to remove the "and today.weekday() != 6" condition from the elif statement to allow the correct behavior. 
+On the other hand, an area where I had to do some extra research would be the testing of the first function. I did some extra research on how to use the pytest testing suite as the pytest testing suite allowed me to easily test for the first issue. 
+
 ## Phase 1: Codebase Map
 
 Mixtape is a Flask + SQLAlchemy JSON API for a social music app: users share songs, listen to them, rate them, build collaborative playlists, and get notified when friends interact with songs they shared. No frontend, no auth — every endpoint takes the acting user's ID in the URL or the JSON body.
@@ -119,6 +126,8 @@ The faulty line was in the cutoff mentioned in get_friends_listening_now(). RECE
 
 Side-effect check: 
 I replaced the rolling cutoff with the start of the current UTC day, so the filter now means "listened today" instead of "listened in the last 24 hours." get_activity_feed() remains unaffected since it never used the cutoff. The rest of the function is untouched as the query still orders newest-first and the dedupe still keeps one entry per friend, so the feed's shape and ordernig are unchanged. 
+
+
 
 3. The same song keeps showing up twice in search
 When I search, some songs come back two or even three times — identical entries, same song. I searched "Anthem" and Crown Heights Anthem by Borough Kings showed up three times in the results. Other songs only show up once. Nothing about the duplicates looks different; it's just the same result repeated.
