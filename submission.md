@@ -121,5 +121,13 @@ Side-effect check:
 I replaced the rolling cutoff with the start of the current UTC day, so the filter now means "listened today" instead of "listened in the last 24 hours." get_activity_feed() remains unaffected since it never used the cutoff. The rest of the function is untouched as the query still orders newest-first and the dedupe still keeps one entry per friend, so the feed's shape and ordernig are unchanged. 
 
 3. The same song keeps showing up twice in search
+When I search, some songs come back two or even three times — identical entries, same song. I searched "Anthem" and Crown Heights Anthem by Borough Kings showed up three times in the results. Other songs only show up once. Nothing about the duplicates looks different; it's just the same result repeated.
 
+How I reproduced the error:
+I seeded the database and ran GET /songs/search?q=Anthem, the same request simone described. It returned count: 1, meaning the reported symptom did not reproduce. Since Crown Heights Anthem has 3 tags in the seed data and was the exact song in the report, I checked whether the join was multiplying rows anyway by running the same query three ways: the raw SQL statement returned 3 rows, query(Song).all() returned 1, and the 2.0-style select(Song)...scalars().all() returned 3. That confirmed the duplication is real in the query but is being discarded before it reaches the response. All 5 tests in test_search.py also passed before I changed anything, which matches that result.
 
+How I found root cause of bug:
+The codebase map pointed me at services/search_service.py. search_songs() is a single query, so I read it line by line and found .outerjoin(song_tags, Song.id == song_tags.c.song_id). I then checked whether anything downstream actually used it — nothing filters, orders, or selects on tags, and the tags list in the response comes from the Song.tags relationship in to_dict(), not from this join. A join whose only effect is on the number of rows returned was the specific cause, not just a suspicious line.
+
+Bug fix for issue #3:
+The query did an outerjoin with song_tags against the song-tags join table. Because a song can have multiple tags, the join produces one row per (song, tag) pair. This means that a song with 3 tags came back as 3 identifcal song rows while a song with one tag appeared only once. This was fixed by removing the unnecessary outerjoin so that the query returns one row per matching song. 
